@@ -8,15 +8,15 @@
 #   resolution: 512
 #   dynamic_resolution: false
 #   batch_size: 1
-# - target: "female person" # what word for erasing the positive concept from
-#   positive: "female person, very old" # concept to erase
-#   unconditional: "female person, very young" # word to take the difference from the positive concept
-#   neutral: "female person" # starting point for conditioning the target
-#   action: "enhance" # erase or enhance
-#   guidance_scale: 4
-#   resolution: 512
-#   dynamic_resolution: false
-#   batch_size: 1
+- target: "" # what word for erasing the positive concept from
+  positive: ""  # concept to erase
+  unconditional: "" # word to take the difference from the positive concept
+  neutral: "" # starting point for conditioning the target
+  action: "enhance" # erase or enhance
+  guidance_scale: 1
+  resolution: 512
+  dynamic_resolution: false
+  batch_size: 1
 ####################################################################################################### GLASSES SLIDER
 # - target: "male person" # what word for erasing the positive concept from
 #   positive: "male person, wearing glasses" # concept to erase
