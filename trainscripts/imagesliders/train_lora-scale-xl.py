@@ -13,7 +13,8 @@ import torch
 from tqdm import tqdm
 from PIL import Image
 
-
+from sai_model_spec import build_metadata
+import time
 import train_util
 import random
 import model_util
@@ -66,6 +67,16 @@ def train(
 
     if config.logging.use_wandb:
         wandb.init(project=f"LECO_{config.save.name}", config=metadata)
+
+    metadata.update(
+        build_metadata(
+            v2=config.pretrained_model.v2,
+            v_parameterization=config.pretrained_model.v_pred,
+            sdxl=True,
+            timestamp=time.time(),
+            title="imagesliders",
+        )
+    )
 
     weight_dtype = config_util.parse_precision(config.train.precision)
     save_weight_dtype = config_util.parse_precision(config.train.precision)
@@ -395,15 +406,17 @@ def train(
             print("Saving...")
             save_path.mkdir(parents=True, exist_ok=True)
             network.save_weights(
-                save_path / f"{config.save.name}_{i}steps.pt",
+                save_path / f"{config.save.name}_{i}steps.safetensors",
                 dtype=save_weight_dtype,
+                metadata=metadata,
             )
 
     print("Saving...")
     save_path.mkdir(parents=True, exist_ok=True)
     network.save_weights(
-        save_path / f"{config.save.name}_last.pt",
+        save_path / f"{config.save.name}_last.safetensors",
         dtype=save_weight_dtype,
+        metadata=metadata,
     )
 
     del (

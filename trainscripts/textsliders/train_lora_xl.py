@@ -13,6 +13,8 @@ from tqdm import tqdm
 
 
 from lora import LoRANetwork, DEFAULT_TARGET_REPLACE, UNET_TARGET_REPLACE_MODULE_CONV
+from sai_model_spec import build_metadata
+import time
 import train_util
 import model_util
 import prompt_util
@@ -57,6 +59,16 @@ def train(
     if config.logging.use_wandb:
         wandb.init(project=f"LECO_{config.save.name}", config=metadata)
 
+    metadata.update(
+        build_metadata(
+            v2=config.pretrained_model.v2,
+            v_parameterization=config.pretrained_model.v_pred,
+            sdxl=True,
+            timestamp=time.time(),
+            title="textsliders", 
+        )
+    )
+
     weight_dtype = config_util.parse_precision(config.train.precision)
     save_weight_dtype = config_util.parse_precision(config.train.precision)
 
@@ -90,15 +102,17 @@ def train(
     ).to(device, dtype=weight_dtype)
 
     optimizer_module = train_util.get_optimizer(config.train.optimizer)
-    #optimizer_args
+    # optimizer_args
     optimizer_kwargs = {}
     if config.train.optimizer_args is not None and len(config.train.optimizer_args) > 0:
         for arg in config.train.optimizer_args.split(" "):
             key, value = arg.split("=")
             value = ast.literal_eval(value)
             optimizer_kwargs[key] = value
-            
-    optimizer = optimizer_module(network.prepare_optimizer_params(), lr=config.train.lr, **optimizer_kwargs)
+
+    optimizer = optimizer_module(
+        network.prepare_optimizer_params(), lr=config.train.lr, **optimizer_kwargs
+    )
     lr_scheduler = train_util.get_lr_scheduler(
         config.train.lr_scheduler,
         optimizer,
@@ -129,15 +143,12 @@ def train(
             ]:
                 if cache[prompt] == None:
                     tex_embs, pool_embs = train_util.encode_prompts_xl(
-                            tokenizers,
-                            text_encoders,
-                            [prompt],
-                            num_images_per_prompt=NUM_IMAGES_PER_PROMPT,
-                        )
-                    cache[prompt] = PromptEmbedsXL(
-                        tex_embs,
-                        pool_embs
+                        tokenizers,
+                        text_encoders,
+                        [prompt],
+                        num_images_per_prompt=NUM_IMAGES_PER_PROMPT,
                     )
+                    cache[prompt] = PromptEmbedsXL(tex_embs, pool_embs)
 
             prompt_pairs.append(
                 PromptEmbedsPair(
@@ -354,7 +365,7 @@ def train(
             latents,
         )
         flush()
-        
+
         if (
             i % config.save.per_steps == 0
             and i != 0
@@ -363,15 +374,17 @@ def train(
             print("Saving...")
             save_path.mkdir(parents=True, exist_ok=True)
             network.save_weights(
-                save_path / f"{config.save.name}_{i}steps.pt",
+                save_path / f"{config.save.name}_{i}steps.safetensors",
                 dtype=save_weight_dtype,
+                metadata=metadata,
             )
 
     print("Saving...")
     save_path.mkdir(parents=True, exist_ok=True)
     network.save_weights(
-        save_path / f"{config.save.name}_last.pt",
+        save_path / f"{config.save.name}_last.safetensors",
         dtype=save_weight_dtype,
+        metadata=metadata,
     )
 
     del (
@@ -395,16 +408,16 @@ def main(args):
         config.save.name = args.name
     attributes = []
     if args.attributes is not None:
-        attributes = args.attributes.split(',')
+        attributes = args.attributes.split(",")
         attributes = [a.strip() for a in attributes]
-    
+
     config.network.alpha = args.alpha
     config.network.rank = args.rank
-    config.save.name += f'_alpha{args.alpha}'
-    config.save.name += f'_rank{config.network.rank }'
-    config.save.name += f'_{config.network.training_method}'
-    config.save.path += f'/{config.save.name}'
-    
+    config.save.name += f"_alpha{args.alpha}"
+    config.save.name += f"_rank{config.network.rank }"
+    config.save.name += f"_{config.network.training_method}"
+    config.save.path += f"/{config.save.name}"
+
     prompts = prompt_util.load_prompts_from_yaml(config.prompts_file, attributes)
     print(prompts)
     device = torch.device(f"cuda:{args.device}")
@@ -457,7 +470,7 @@ if __name__ == "__main__":
         default=None,
         help="attritbutes to disentangle (comma seperated string)",
     )
-    
+
     args = parser.parse_args()
 
     main(args)
