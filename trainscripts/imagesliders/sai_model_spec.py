@@ -90,6 +90,7 @@ def build_metadata(
             arch = ARCH_SD_V2_512
     else:
         metadata["ss_base_model_version"] = "sd1.5"
+        del metadata["ss_v2"]
         arch = ARCH_SD_V1
 
     arch += f"/{ADAPTER_LORA}"
