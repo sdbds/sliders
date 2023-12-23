@@ -38,6 +38,8 @@ BASE_METADATA = {
     "modelspec.prediction_type": None,
     "modelspec.timestep_range": None,
     "modelspec.encoder_layer": None,
+    "ss_base_model_version":"sdxl_base_v1-0",
+    "ss_v2":False,
 }
 
 # 別に使うやつだけ定義
@@ -76,13 +78,18 @@ def build_metadata(
     metadata.update(BASE_METADATA)
 
     if sdxl:
+        metadata["ss_base_model_version"] = "sdxl_base_v1-0"
+        del metadata["ss_v2"]
         arch = ARCH_SD_XL_V1_BASE
     elif v2:
+        metadata["ss_v2"] = True
+        metadata["ss_base_model_version"] = "sd2.1"
         if v_parameterization:
             arch = ARCH_SD_V2_768_V
         else:
             arch = ARCH_SD_V2_512
     else:
+        metadata["ss_base_model_version"] = "sd1.5"
         arch = ARCH_SD_V1
 
     arch += f"/{ADAPTER_LORA}"
