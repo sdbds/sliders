@@ -13,24 +13,15 @@ from tqdm import tqdm
 
 
 from lora import LoRANetwork, DEFAULT_TARGET_REPLACE, UNET_TARGET_REPLACE_MODULE_CONV
-from sai_model_spec import build_metadata
-import time
 import train_util
 import model_util
 import prompt_util
-from prompt_util import (
-    PromptEmbedsCache,
-    PromptEmbedsPair,
-    PromptSettings,
-    PromptEmbedsXL,
-)
+from prompt_util import PromptEmbedsCache, PromptEmbedsPair, PromptSettings
 import debug_util
 import config_util
 from config_util import RootConfig
 
 import wandb
-
-NUM_IMAGES_PER_PROMPT = 1
 
 
 def flush():
@@ -41,8 +32,9 @@ def flush():
 def train(
     config: RootConfig,
     prompts: list[PromptSettings],
-    device,
+    device: int
 ):
+    
     metadata = {
         "prompts": ",".join([prompt.json() for prompt in prompts]),
         "config": config.json(),
@@ -59,37 +51,21 @@ def train(
     if config.logging.use_wandb:
         wandb.init(project=f"LECO_{config.save.name}", config=metadata)
 
-    metadata.update(
-        build_metadata(
-            v2=config.pretrained_model.v2,
-            v_parameterization=config.pretrained_model.v_pred,
-            sdxl=True,
-            timestamp=time.time(),
-            title="textsliders", 
-        )
-    )
-
     weight_dtype = config_util.parse_precision(config.train.precision)
     save_weight_dtype = config_util.parse_precision(config.train.precision)
 
-    (
-        tokenizers,
-        text_encoders,
-        unet,
-        noise_scheduler,
-    ) = model_util.load_models_xl(
+    tokenizer, text_encoder, unet, noise_scheduler = model_util.load_models(
         config.pretrained_model.name_or_path,
         scheduler_name=config.train.noise_scheduler,
+        v2=config.pretrained_model.v2,
+        v_pred=config.pretrained_model.v_pred,
     )
 
-    for text_encoder in text_encoders:
-        text_encoder.to(device, dtype=weight_dtype)
-        text_encoder.requires_grad_(False)
-        text_encoder.eval()
+    text_encoder.to(device, dtype=weight_dtype)
+    text_encoder.eval()
 
     unet.to(device, dtype=weight_dtype)
-    if config.other.use_xformers:
-        unet.enable_xformers_memory_efficient_attention()
+    unet.enable_xformers_memory_efficient_attention()
     unet.requires_grad_(False)
     unet.eval()
 
@@ -102,17 +78,15 @@ def train(
     ).to(device, dtype=weight_dtype)
 
     optimizer_module = train_util.get_optimizer(config.train.optimizer)
-    # optimizer_args
+    #optimizer_args
     optimizer_kwargs = {}
     if config.train.optimizer_args is not None and len(config.train.optimizer_args) > 0:
         for arg in config.train.optimizer_args.split(" "):
             key, value = arg.split("=")
             value = ast.literal_eval(value)
             optimizer_kwargs[key] = value
-
-    optimizer = optimizer_module(
-        network.prepare_optimizer_params(), lr=config.train.lr, **optimizer_kwargs
-    )
+            
+    optimizer = optimizer_module(network.prepare_optimizer_params(), lr=config.train.lr, **optimizer_kwargs)
     lr_scheduler = train_util.get_lr_scheduler(
         config.train.lr_scheduler,
         optimizer,
@@ -141,14 +115,24 @@ def train(
                 settings.neutral,
                 settings.unconditional,
             ]:
-                if cache[prompt] == None:
-                    tex_embs, pool_embs = train_util.encode_prompts_xl(
-                        tokenizers,
-                        text_encoders,
-                        [prompt],
-                        num_images_per_prompt=NUM_IMAGES_PER_PROMPT,
-                    )
-                    cache[prompt] = PromptEmbedsXL(tex_embs, pool_embs)
+                print(prompt)
+                if isinstance(prompt, list):
+                    if prompt == settings.positive:
+                        key_setting = 'positive'
+                    else:
+                        key_setting = 'attributes'
+                    if len(prompt) == 0:
+                        cache[key_setting] = []
+                    else:
+                        if cache[key_setting] is None:
+                            cache[key_setting] = train_util.encode_prompts(
+                                tokenizer, text_encoder, prompt
+                            )
+                else:
+                    if cache[prompt] == None:
+                        cache[prompt] = train_util.encode_prompts(
+                            tokenizer, text_encoder, [prompt]
+                        )
 
             prompt_pairs.append(
                 PromptEmbedsPair(
@@ -161,14 +145,12 @@ def train(
                 )
             )
 
-    for tokenizer, text_encoder in zip(tokenizers, text_encoders):
-        del tokenizer, text_encoder
+    del tokenizer
+    del text_encoder
 
     flush()
 
     pbar = tqdm(range(config.train.iterations))
-
-    loss = None
 
     for i in pbar:
         with torch.no_grad():
@@ -187,50 +169,37 @@ def train(
                 1, config.train.max_denoising_steps, (1,)
             ).item()
 
-            height, width = prompt_pair.resolution, prompt_pair.resolution
+            height, width = (
+                prompt_pair.resolution,
+                prompt_pair.resolution,
+            )
             if prompt_pair.dynamic_resolution:
                 height, width = train_util.get_random_resolution_in_bucket(
                     prompt_pair.resolution
                 )
 
             if config.logging.verbose:
-                print("gudance_scale:", prompt_pair.guidance_scale)
+                print("guidance_scale:", prompt_pair.guidance_scale)
                 print("resolution:", prompt_pair.resolution)
                 print("dynamic_resolution:", prompt_pair.dynamic_resolution)
                 if prompt_pair.dynamic_resolution:
                     print("bucketed resolution:", (height, width))
                 print("batch_size:", prompt_pair.batch_size)
-                print("dynamic_crops:", prompt_pair.dynamic_crops)
 
             latents = train_util.get_initial_latents(
                 noise_scheduler, prompt_pair.batch_size, height, width, 1
             ).to(device, dtype=weight_dtype)
 
-            add_time_ids = train_util.get_add_time_ids(
-                height,
-                width,
-                dynamic_crops=prompt_pair.dynamic_crops,
-                dtype=weight_dtype,
-            ).to(device, dtype=weight_dtype)
-
             with network:
                 # ちょっとデノイズされれたものが返る
-                denoised_latents = train_util.diffusion_xl(
+                denoised_latents = train_util.diffusion(
                     unet,
                     noise_scheduler,
                     latents,  # 単純なノイズのlatentsを渡す
-                    text_embeddings=train_util.concat_embeddings(
-                        prompt_pair.unconditional.text_embeds,
-                        prompt_pair.target.text_embeds,
+                    train_util.concat_embeddings(
+                        prompt_pair.unconditional,
+                        prompt_pair.target,
                         prompt_pair.batch_size,
-                    ),
-                    add_text_embeddings=train_util.concat_embeddings(
-                        prompt_pair.unconditional.pooled_embeds,
-                        prompt_pair.target.pooled_embeds,
-                        prompt_pair.batch_size,
-                    ),
-                    add_time_ids=train_util.concat_embeddings(
-                        add_time_ids, add_time_ids, prompt_pair.batch_size
                     ),
                     start_timesteps=0,
                     total_timesteps=timesteps_to,
@@ -244,93 +213,66 @@ def train(
             ]
 
             # with network: の外では空のLoRAのみが有効になる
-            positive_latents = train_util.predict_noise_xl(
+            positive_latents = train_util.predict_noise(
                 unet,
                 noise_scheduler,
                 current_timestep,
                 denoised_latents,
-                text_embeddings=train_util.concat_embeddings(
-                    prompt_pair.unconditional.text_embeds,
-                    prompt_pair.positive.text_embeds,
+                train_util.concat_embeddings(
+                    prompt_pair.unconditional,
+                    prompt_pair.positive,
                     prompt_pair.batch_size,
-                ),
-                add_text_embeddings=train_util.concat_embeddings(
-                    prompt_pair.unconditional.pooled_embeds,
-                    prompt_pair.positive.pooled_embeds,
-                    prompt_pair.batch_size,
-                ),
-                add_time_ids=train_util.concat_embeddings(
-                    add_time_ids, add_time_ids, prompt_pair.batch_size
                 ),
                 guidance_scale=1,
             ).to(device, dtype=weight_dtype)
-            neutral_latents = train_util.predict_noise_xl(
+             
+            neutral_latents = train_util.predict_noise(
                 unet,
                 noise_scheduler,
                 current_timestep,
                 denoised_latents,
-                text_embeddings=train_util.concat_embeddings(
-                    prompt_pair.unconditional.text_embeds,
-                    prompt_pair.neutral.text_embeds,
+                train_util.concat_embeddings(
+                    prompt_pair.unconditional,
+                    prompt_pair.neutral,
                     prompt_pair.batch_size,
-                ),
-                add_text_embeddings=train_util.concat_embeddings(
-                    prompt_pair.unconditional.pooled_embeds,
-                    prompt_pair.neutral.pooled_embeds,
-                    prompt_pair.batch_size,
-                ),
-                add_time_ids=train_util.concat_embeddings(
-                    add_time_ids, add_time_ids, prompt_pair.batch_size
                 ),
                 guidance_scale=1,
             ).to(device, dtype=weight_dtype)
-            unconditional_latents = train_util.predict_noise_xl(
+            unconditional_latents = train_util.predict_noise(
                 unet,
                 noise_scheduler,
                 current_timestep,
                 denoised_latents,
-                text_embeddings=train_util.concat_embeddings(
-                    prompt_pair.unconditional.text_embeds,
-                    prompt_pair.unconditional.text_embeds,
+                train_util.concat_embeddings(
+                    prompt_pair.unconditional,
+                    prompt_pair.unconditional,
                     prompt_pair.batch_size,
-                ),
-                add_text_embeddings=train_util.concat_embeddings(
-                    prompt_pair.unconditional.pooled_embeds,
-                    prompt_pair.unconditional.pooled_embeds,
-                    prompt_pair.batch_size,
-                ),
-                add_time_ids=train_util.concat_embeddings(
-                    add_time_ids, add_time_ids, prompt_pair.batch_size
                 ),
                 guidance_scale=1,
             ).to(device, dtype=weight_dtype)
-
+            
+            
+            #########################
             if config.logging.verbose:
                 print("positive_latents:", positive_latents[0, 0, :5, :5])
                 print("neutral_latents:", neutral_latents[0, 0, :5, :5])
                 print("unconditional_latents:", unconditional_latents[0, 0, :5, :5])
 
         with network:
-            target_latents = train_util.predict_noise_xl(
+            target_latents = train_util.predict_noise(
                 unet,
                 noise_scheduler,
                 current_timestep,
                 denoised_latents,
-                text_embeddings=train_util.concat_embeddings(
-                    prompt_pair.unconditional.text_embeds,
-                    prompt_pair.target.text_embeds,
+                train_util.concat_embeddings(
+                    prompt_pair.unconditional,
+                    prompt_pair.target,
                     prompt_pair.batch_size,
-                ),
-                add_text_embeddings=train_util.concat_embeddings(
-                    prompt_pair.unconditional.pooled_embeds,
-                    prompt_pair.target.pooled_embeds,
-                    prompt_pair.batch_size,
-                ),
-                add_time_ids=train_util.concat_embeddings(
-                    add_time_ids, add_time_ids, prompt_pair.batch_size
                 ),
                 guidance_scale=1,
             ).to(device, dtype=weight_dtype)
+            
+            #########################
 
             if config.logging.verbose:
                 print("target_latents:", target_latents[0, 0, :5, :5])
@@ -345,7 +287,7 @@ def train(
             neutral_latents=neutral_latents,
             unconditional_latents=unconditional_latents,
         )
-
+             
         # 1000倍しないとずっと0.000...になってしまって見た目的に面白くない
         pbar.set_description(f"Loss*1k: {loss.item()*1000:.4f}")
         if config.logging.use_wandb:
@@ -374,17 +316,15 @@ def train(
             print("Saving...")
             save_path.mkdir(parents=True, exist_ok=True)
             network.save_weights(
-                save_path / f"{config.save.name}_{i}steps.safetensors",
+                save_path / f"{config.save.name}_{i}steps.pt",
                 dtype=save_weight_dtype,
-                metadata=metadata,
             )
 
     print("Saving...")
     save_path.mkdir(parents=True, exist_ok=True)
     network.save_weights(
-        save_path / f"{config.save.name}_last.safetensors",
+        save_path / f"{config.save.name}_last.pt",
         dtype=save_weight_dtype,
-        metadata=metadata,
     )
 
     del (
@@ -408,7 +348,7 @@ def main(args):
         config.save.name = args.name
     attributes = []
     if args.attributes is not None:
-        attributes = args.attributes.split(",")
+        attributes = args.attributes.split(',')
         attributes = [a.strip() for a in attributes]
 
     if args.prompts_file is not None:
@@ -426,7 +366,7 @@ def main(args):
     print(prompts)
     device = torch.device(f"cuda:{args.device}")
     train(config, prompts, device)
-
+    
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -481,7 +421,9 @@ if __name__ == "__main__":
         default=None,
         help="attritbutes to disentangle (comma seperated string)",
     )
-
+    
+    # --attributes 'male, female'
+    
     args = parser.parse_args()
 
     main(args)

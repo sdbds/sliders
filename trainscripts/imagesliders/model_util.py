@@ -196,7 +196,7 @@ def load_checkpoint_model_xl(
     text_encoders = [pipe.text_encoder, pipe.text_encoder_2]
     if len(text_encoders) == 2:
         text_encoders[1].pad_token_id = 0
-
+    vae = pipe.vae
     del pipe
 
     return tokenizers, text_encoders, unet, vae

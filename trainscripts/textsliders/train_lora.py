@@ -361,32 +361,42 @@ def main(args):
         attributes = args.attributes.split(",")
         attributes = [a.strip() for a in attributes]
 
-    config.network.alpha = args.alpha
-    config.network.rank = args.rank
-    config.save.name += f"_alpha{args.alpha}"
-    config.save.name += f"_rank{config.network.rank }"
-    config.save.name += f"_{config.network.training_method}"
-    config.save.path += f"/{config.save.name}"
-
+    if args.prompts_file is not None:
+        config.prompts_file = args.prompts_file
+    if args.alpha is not None:
+        config.network.alpha = args.alpha
+    if args.rank is not None:
+        config.network.rank = args.rank
+    config.save.name += f'_alpha{config.network.alpha}'
+    config.save.name += f'_rank{config.network.rank}'
+    config.save.name += f'_{config.network.training_method}'
+    config.save.path += f'/{config.save.name}'
+    
     prompts = prompt_util.load_prompts_from_yaml(config.prompts_file, attributes)
+    print(prompts)
     device = torch.device(f"cuda:{args.device}")
-
-    train(config=config, prompts=prompts, device=device)
+    train(config, prompts, device)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--config_file",
-        required=False,
-        default="data/config.yaml",
+        required=True,
         help="Config file for training.",
+    )
+    parser.add_argument(
+        "--prompts_file",
+        required=False,
+        help="Prompts file for training.",
+        default=None
     )
     # config_file 'data/config.yaml'
     parser.add_argument(
         "--alpha",
         type=float,
-        required=True,
+        required=False,
+        default=None,
         help="LoRA weight.",
     )
     # --alpha 1.0
@@ -395,7 +405,7 @@ if __name__ == "__main__":
         type=int,
         required=False,
         help="Rank of LoRA.",
-        default=4,
+        default=None,
     )
     # --rank 4
     parser.add_argument(
