@@ -1,10 +1,10 @@
 --extra-index-url https://download.pytorch.org/whl/cu121
-accelerate==0.22.0
+accelerate
 bitsandbytes
 dadaptation==3.1
-diffusers==0.20.2
+diffusers
 ipython==8.7.0
-lion_pytorch==0.1.2
+lion_pytorch
 lpips==0.1.4
 matplotlib==3.6.2
 numpy
@@ -12,15 +12,15 @@ opencv_python==4.5.5.64
 opencv_python_headless==4.7.0.68
 pandas==1.5.2
 Pillow==10.1.0
-prodigyopt==1.0
+prodigyopt
 pydantic==1.10.3
 PyYAML==6.0.1
 Requests==2.31.0
 safetensors==0.3.1
-torch==2.1.1
-torchvision==0.16.1
-tqdm==4.64.1
-transformers==4.27.4
-wandb==0.12.21
-xformers==0.0.23
+torch==2.3.1
+torchvision==0.18.1
+tqdm
+transformers
+wandb
+#xformers==0.0.27
 omegaconf
