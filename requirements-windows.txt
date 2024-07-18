@@ -7,7 +7,7 @@ ipython==8.7.0
 lion_pytorch
 lpips==0.1.4
 matplotlib==3.6.2
-numpy
+numpy==1.26.4
 opencv_python==4.5.5.64
 opencv_python_headless==4.7.0.68
 pandas==1.5.2
@@ -22,5 +22,5 @@ torchvision==0.18.1
 tqdm
 transformers
 wandb
-#xformers==0.0.27
+xformers==0.0.27
 omegaconf

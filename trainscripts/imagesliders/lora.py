@@ -37,6 +37,8 @@ TRAINING_METHODS = Literal[
     "xattn-strict", # q and k values
     "noxattn-hspace",
     "noxattn-hspace-last",
+    "content",
+    "style",
     # "xlayer",
     # "outxattn",
     # "outsattn",
@@ -44,6 +46,11 @@ TRAINING_METHODS = Literal[
     # "inmidsattn",
     # "selflayer",
 ]
+
+BLOCKS = {
+    'content': ['up_blocks.0.attentions.0'],
+    'style': ['up_blocks.0.attentions.1'],
+}
 
 
 class LoRAModule(nn.Module):
@@ -171,6 +178,11 @@ class LoRANetwork(nn.Module):
     ) -> list:
         loras = []
         names = []
+        current_multiplier = multiplier
+
+        def is_in_blocks(name: str, include_blocks: list) -> bool:
+            return any(block in name for block in include_blocks) if include_blocks else True
+
         for name, module in root_module.named_modules():
             if train_method == "noxattn" or train_method == "noxattn-hspace" or train_method == "noxattn-hspace-last":  # Cross Attention と Time Embed 以外学習
                 if "attn2" in name or "time_embed" in name:
@@ -184,6 +196,15 @@ class LoRANetwork(nn.Module):
             elif train_method == "xattn" or train_method == "xattn-strict":  # Cross Attention のみ学習
                 if "attn2" not in name:
                     continue
+            elif train_method in ["content", "style"]:
+                if not is_in_blocks(name, BLOCKS['content'] + BLOCKS['style']):
+                    continue
+                if (
+                    train_method == "content" and is_in_blocks(name, BLOCKS["style"])
+                ) or (
+                    train_method == "style" and is_in_blocks(name, BLOCKS["content"])
+                ):
+                    current_multiplier = 0
             elif train_method == "full":  # 全部学習
                 pass
             else:
@@ -204,15 +225,15 @@ class LoRANetwork(nn.Module):
                                 continue
                         lora_name = prefix + "." + name + "." + child_name
                         lora_name = lora_name.replace(".", "_")
-#                         print(f"{lora_name}")
+                        #                         print(f"{lora_name}")
                         lora = self.module(
-                            lora_name, child_module, multiplier, rank, self.alpha
+                            lora_name, child_module, current_multiplier, rank, self.alpha
                         )
-#                         print(name, child_name)
-#                         print(child_module.weight.shape)
+                        #                         print(name, child_name)
+                        #                         print(child_module.weight.shape)
                         loras.append(lora)
                         names.append(lora_name)
-#         print(f'@@@@@@@@@@@@@@@@@@@@@@@@@@@@ \n {names}')
+        #         print(f'@@@@@@@@@@@@@@@@@@@@@@@@@@@@ \n {names}')
         return loras
 
     def prepare_optimizer_params(self):
@@ -235,10 +256,10 @@ class LoRANetwork(nn.Module):
                 v = v.detach().clone().to("cpu").to(dtype)
                 state_dict[key] = v
 
-#         for key in list(state_dict.keys()):
-#             if not key.startswith("lora"):
-#                 # lora以外除外
-#                 del state_dict[key]
+        #         for key in list(state_dict.keys()):
+        #             if not key.startswith("lora"):
+        #                 # lora以外除外
+        #                 del state_dict[key]
 
         if os.path.splitext(file)[1] == ".safetensors":
             save_file(state_dict, file, metadata)
