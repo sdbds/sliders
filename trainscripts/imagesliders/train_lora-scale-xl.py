@@ -192,23 +192,10 @@ def train(
 
             # 1 ~ 49 からランダム
             timesteps_to = torch.randint(
-                1, config.train.max_denoising_steps, (1,)
+                10, config.train.max_denoising_steps, (1,)
             ).item()
 
             height, width = prompt_pair.resolution, prompt_pair.resolution
-            if prompt_pair.dynamic_resolution:
-                height, width = train_util.get_random_resolution_in_bucket(
-                    prompt_pair.resolution
-                )
-
-            if config.logging.verbose:
-                print("guidance_scale:", prompt_pair.guidance_scale)
-                print("resolution:", prompt_pair.resolution)
-                print("dynamic_resolution:", prompt_pair.dynamic_resolution)
-                if prompt_pair.dynamic_resolution:
-                    print("bucketed resolution:", (height, width))
-                print("batch_size:", prompt_pair.batch_size)
-                print("dynamic_crops:", prompt_pair.dynamic_crops)
 
             scale_to_look = abs(random.choice(list(scales_unique)))
             folder1 = folders[scales == -scale_to_look][0]
@@ -225,15 +212,33 @@ def train(
             img1 = (
                 Image.open(f"{folder_main}/{folder1}/{ims[random_sampler]}")
                 .convert("RGB")
-                .resize((512, 512))
             )
+
             img2 = (
                 Image.open(f"{folder_main}/{folder2}/{ims[random_sampler]}")
                 .convert("RGB")
-                .resize((512, 512))
             )
 
             seed = random.randint(0, 2 * 15)
+
+            if prompt_pair.dynamic_resolution:
+                height, width = train_util.bucket_resolution(
+                    bucket_resolution=prompt_pair.resolution, 
+                    img_resolution=img1.size if img1.size[0]*img1.size[1]<img2.size[0]*img2.size[1] else img2.size, 
+                    multiple=32
+                )
+
+            img1=img1.resize((width, height),resample=Image.LANCZOS)
+            img2=img2.resize((width, height),resample=Image.LANCZOS)
+
+            if config.logging.verbose:
+                print("guidance_scale:", prompt_pair.guidance_scale)
+                print("resolution:", prompt_pair.resolution)
+                print("dynamic_resolution:", prompt_pair.dynamic_resolution)
+                if prompt_pair.dynamic_resolution:
+                    print("bucketed resolution:", (height, width))
+                print("batch_size:", prompt_pair.batch_size)
+                print("dynamic_crops:", prompt_pair.dynamic_crops)
 
             generator = torch.manual_seed(seed)
             denoised_latents_low, low_noise = train_util.get_noisy_image(
@@ -272,59 +277,54 @@ def train(
             current_timestep = noise_scheduler.timesteps[
                 int(timesteps_to * 1000 / config.train.max_denoising_steps)
             ]
-            try:
-                # with network: の外では空のLoRAのみが有効になる
-                high_latents = train_util.predict_noise_xl(
-                    unet,
-                    noise_scheduler,
-                    current_timestep,
-                    denoised_latents_high,
-                    text_embeddings=train_util.concat_embeddings(
-                        prompt_pair.unconditional.text_embeds,
-                        prompt_pair.positive.text_embeds,
-                        prompt_pair.batch_size,
-                    ),
-                    add_text_embeddings=train_util.concat_embeddings(
-                        prompt_pair.unconditional.pooled_embeds,
-                        prompt_pair.positive.pooled_embeds,
-                        prompt_pair.batch_size,
-                    ),
-                    add_time_ids=train_util.concat_embeddings(
-                        add_time_ids, add_time_ids, prompt_pair.batch_size
-                    ),
-                    guidance_scale=1,
-                ).to(device, dtype=torch.float32)
-            except:
-                flush()
-                print(f"Error Occured!: {np.array(img1).shape} {np.array(img2).shape}")
-                continue
-            # with network: の外では空のLoRAのみが有効になる
+            # try:
+            #     # with network: の外では空のLoRAのみが有効になる
+            #     high_latents = train_util.predict_noise_xl(
+            #         unet,
+            #         noise_scheduler,
+            #         current_timestep,
+            #         denoised_latents_high,
+            #         text_embeddings=train_util.concat_embeddings(
+            #             prompt_pair.unconditional.text_embeds,
+            #             prompt_pair.positive.text_embeds,
+            #             prompt_pair.batch_size,
+            #         ),
+            #         add_text_embeddings=train_util.concat_embeddings(
+            #             prompt_pair.unconditional.pooled_embeds,
+            #             prompt_pair.positive.pooled_embeds,
+            #             prompt_pair.batch_size,
+            #         ),
+            #         add_time_ids=train_util.concat_embeddings(
+            #             add_time_ids, add_time_ids, prompt_pair.batch_size
+            #         ),
+            #         guidance_scale=1,
+            #     ).to(device, dtype=torch.float32)
+            # except:
+            #     flush()
+            #     print(f"Error Occured!: {np.array(img1).shape} {np.array(img2).shape}")
+            #     continue
+            # # with network: の外では空のLoRAのみが有効になる
 
-            low_latents = train_util.predict_noise_xl(
-                unet,
-                noise_scheduler,
-                current_timestep,
-                denoised_latents_low,
-                text_embeddings=train_util.concat_embeddings(
-                    prompt_pair.unconditional.text_embeds,
-                    prompt_pair.neutral.text_embeds,
-                    prompt_pair.batch_size,
-                ),
-                add_text_embeddings=train_util.concat_embeddings(
-                    prompt_pair.unconditional.pooled_embeds,
-                    prompt_pair.neutral.pooled_embeds,
-                    prompt_pair.batch_size,
-                ),
-                add_time_ids=train_util.concat_embeddings(
-                    add_time_ids, add_time_ids, prompt_pair.batch_size
-                ),
-                guidance_scale=1,
-            ).to(device, dtype=torch.float32)
-
-            if config.logging.verbose:
-                print("positive_latents:", positive_latents[0, 0, :5, :5])
-                print("neutral_latents:", neutral_latents[0, 0, :5, :5])
-                print("unconditional_latents:", unconditional_latents[0, 0, :5, :5])
+            # low_latents = train_util.predict_noise_xl(
+            #     unet,
+            #     noise_scheduler,
+            #     current_timestep,
+            #     denoised_latents_low,
+            #     text_embeddings=train_util.concat_embeddings(
+            #         prompt_pair.unconditional.text_embeds,
+            #         prompt_pair.neutral.text_embeds,
+            #         prompt_pair.batch_size,
+            #     ),
+            #     add_text_embeddings=train_util.concat_embeddings(
+            #         prompt_pair.unconditional.pooled_embeds,
+            #         prompt_pair.neutral.pooled_embeds,
+            #         prompt_pair.batch_size,
+            #     ),
+            #     add_time_ids=train_util.concat_embeddings(
+            #         add_time_ids, add_time_ids, prompt_pair.batch_size
+            #     ),
+            #     guidance_scale=1,
+            # ).to(device, dtype=torch.float32)
 
         network.set_lora_slider(scale=scale_to_look)
         with network:
@@ -346,11 +346,11 @@ def train(
                 add_time_ids=train_util.concat_embeddings(
                     add_time_ids, add_time_ids, prompt_pair.batch_size
                 ),
-                guidance_scale=1,
+                guidance_scale=prompt_pair.guidance_scale,
             ).to(device, dtype=torch.float32)
 
-        high_latents.requires_grad = False
-        low_latents.requires_grad = False
+        # high_latents.requires_grad = False
+        # low_latents.requires_grad = False
 
         loss_high = criteria(target_latents_high, high_noise.to(torch.float32))
         pbar.set_description(f"Loss*1k: {loss_high.item()*1000:.4f}")
@@ -377,22 +377,26 @@ def train(
                 add_time_ids=train_util.concat_embeddings(
                     add_time_ids, add_time_ids, prompt_pair.batch_size
                 ),
-                guidance_scale=1,
+                guidance_scale=prompt_pair.guidance_scale,
             ).to(device, dtype=torch.float32)
 
-        high_latents.requires_grad = False
-        low_latents.requires_grad = False
+        # high_latents.requires_grad = False
+        # low_latents.requires_grad = False
 
         loss_low = criteria(target_latents_low, low_noise.to(torch.float32))
         pbar.set_description(f"Loss*1k: {loss_low.item()*1000:.4f}")
         loss_low.backward()
 
+        if config.logging.verbose:
+            print("high_latents:", target_latents_high[0, 0, :5, :5])
+            print("low_latents:", target_latents_low[0, 0, :5, :5])
+
         optimizer.step()
         lr_scheduler.step()
 
         del (
-            high_latents,
-            low_latents,
+            # high_latents,
+            # low_latents,
             target_latents_low,
             target_latents_high,
         )

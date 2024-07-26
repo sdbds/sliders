@@ -6,7 +6,7 @@ from transformers import CLIPTextModel, CLIPTokenizer
 from diffusers import UNet2DConditionModel, SchedulerMixin
 from diffusers.image_processor import VaeImageProcessor
 from model_util import SDXL_TEXT_ENCODER_TYPE
-from diffusers.utils import randn_tensor
+from diffusers.utils.torch_utils import randn_tensor
 
 from tqdm import tqdm
 
@@ -456,3 +456,29 @@ def get_random_resolution_in_bucket(bucket_resolution: int = 512) -> tuple[int, 
     width = torch.randint(min_step, max_step, (1,)).item() * step
 
     return height, width
+
+def bucket_resolution(bucket_resolution: int, img_resolution: tuple[int, int], multiple: int = 64) -> tuple[int, int]:
+    max_resolution = int(bucket_resolution * 1.5)
+    min_resolution = bucket_resolution // 2
+
+    img_width, img_height = img_resolution
+
+    # 检查图片分辨率是否在分桶范围内
+    if min_resolution <= img_height <= max_resolution and min_resolution <= img_width <= max_resolution:
+        return img_height, img_width
+
+    # 计算等比例缩放后的分辨率
+    aspect_ratio = img_width / img_height
+
+    if img_width > img_height:
+        new_width = max_resolution
+        new_height = int(new_width / aspect_ratio)
+    else:
+        new_height = max_resolution
+        new_width = int(new_height * aspect_ratio)
+
+    # 确保分辨率是 multiple 的整数倍
+    new_height = (new_height // multiple) * multiple
+    new_width = (new_width // multiple) * multiple
+
+    return new_height, new_width

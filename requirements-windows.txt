@@ -1,7 +1,7 @@
 --extra-index-url https://download.pytorch.org/whl/cu121
 accelerate
 bitsandbytes
-dadaptation==3.1
+dadaptation
 diffusers
 ipython==8.7.0
 lion_pytorch
