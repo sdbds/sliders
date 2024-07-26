@@ -3,7 +3,7 @@ accelerate
 bitsandbytes
 dadaptation
 diffusers
-ipython==8.7.0
+ipython<=8.18.1
 lion_pytorch
 lpips==0.1.4
 matplotlib==3.6.2
