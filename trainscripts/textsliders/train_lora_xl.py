@@ -2,7 +2,6 @@
 # - https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion.py#L566
 # - https://huggingface.co/spaces/baulab/Erasing-Concepts-In-Diffusion/blob/main/train.py
 
-from typing import List, Optional
 import argparse
 import ast
 from pathlib import Path
@@ -246,66 +245,67 @@ def train(
             ]
 
             # with network: の外では空のLoRAのみが有効になる
-            positive_latents = train_util.predict_noise_xl(
-                unet,
-                noise_scheduler,
-                current_timestep,
-                denoised_latents,
-                text_embeddings=train_util.concat_embeddings(
-                    prompt_pair.unconditional.text_embeds,
-                    prompt_pair.positive.text_embeds,
-                    prompt_pair.batch_size,
-                ),
-                add_text_embeddings=train_util.concat_embeddings(
-                    prompt_pair.unconditional.pooled_embeds,
-                    prompt_pair.positive.pooled_embeds,
-                    prompt_pair.batch_size,
-                ),
-                add_time_ids=train_util.concat_embeddings(
-                    add_time_ids, add_time_ids, prompt_pair.batch_size
-                ),
-                guidance_scale=1,
-            ).to(device, dtype=weight_dtype)
-            neutral_latents = train_util.predict_noise_xl(
-                unet,
-                noise_scheduler,
-                current_timestep,
-                denoised_latents,
-                text_embeddings=train_util.concat_embeddings(
-                    prompt_pair.unconditional.text_embeds,
-                    prompt_pair.neutral.text_embeds,
-                    prompt_pair.batch_size,
-                ),
-                add_text_embeddings=train_util.concat_embeddings(
-                    prompt_pair.unconditional.pooled_embeds,
-                    prompt_pair.neutral.pooled_embeds,
-                    prompt_pair.batch_size,
-                ),
-                add_time_ids=train_util.concat_embeddings(
-                    add_time_ids, add_time_ids, prompt_pair.batch_size
-                ),
-                guidance_scale=1,
-            ).to(device, dtype=weight_dtype)
-            unconditional_latents = train_util.predict_noise_xl(
-                unet,
-                noise_scheduler,
-                current_timestep,
-                denoised_latents,
-                text_embeddings=train_util.concat_embeddings(
-                    prompt_pair.unconditional.text_embeds,
-                    prompt_pair.unconditional.text_embeds,
-                    prompt_pair.batch_size,
-                ),
-                add_text_embeddings=train_util.concat_embeddings(
-                    prompt_pair.unconditional.pooled_embeds,
-                    prompt_pair.unconditional.pooled_embeds,
-                    prompt_pair.batch_size,
-                ),
-                add_time_ids=train_util.concat_embeddings(
-                    add_time_ids, add_time_ids, prompt_pair.batch_size
-                ),
-                guidance_scale=1,
-            ).to(device, dtype=weight_dtype)
+            with torch.no_grad():
+                positive_latents = train_util.predict_noise_xl(
+                    unet,
+                    noise_scheduler,
+                    current_timestep,
+                    denoised_latents,
+                    text_embeddings=train_util.concat_embeddings(
+                        prompt_pair.unconditional.text_embeds,
+                        prompt_pair.positive.text_embeds,
+                        prompt_pair.batch_size,
+                    ),
+                    add_text_embeddings=train_util.concat_embeddings(
+                        prompt_pair.unconditional.pooled_embeds,
+                        prompt_pair.positive.pooled_embeds,
+                        prompt_pair.batch_size,
+                    ),
+                    add_time_ids=train_util.concat_embeddings(
+                        add_time_ids, add_time_ids, prompt_pair.batch_size
+                    ),
+                    guidance_scale=1,
+                ).to(device, dtype=weight_dtype)
+                neutral_latents = train_util.predict_noise_xl(
+                    unet,
+                    noise_scheduler,
+                    current_timestep,
+                    denoised_latents,
+                    text_embeddings=train_util.concat_embeddings(
+                        prompt_pair.unconditional.text_embeds,
+                        prompt_pair.neutral.text_embeds,
+                        prompt_pair.batch_size,
+                    ),
+                    add_text_embeddings=train_util.concat_embeddings(
+                        prompt_pair.unconditional.pooled_embeds,
+                        prompt_pair.neutral.pooled_embeds,
+                        prompt_pair.batch_size,
+                    ),
+                    add_time_ids=train_util.concat_embeddings(
+                        add_time_ids, add_time_ids, prompt_pair.batch_size
+                    ),
+                    guidance_scale=1,
+                ).to(device, dtype=weight_dtype)
+                unconditional_latents = train_util.predict_noise_xl(
+                    unet,
+                    noise_scheduler,
+                    current_timestep,
+                    denoised_latents,
+                    text_embeddings=train_util.concat_embeddings(
+                        prompt_pair.unconditional.text_embeds,
+                        prompt_pair.unconditional.text_embeds,
+                        prompt_pair.batch_size,
+                    ),
+                    add_text_embeddings=train_util.concat_embeddings(
+                        prompt_pair.unconditional.pooled_embeds,
+                        prompt_pair.unconditional.pooled_embeds,
+                        prompt_pair.batch_size,
+                    ),
+                    add_time_ids=train_util.concat_embeddings(
+                        add_time_ids, add_time_ids, prompt_pair.batch_size
+                    ),
+                    guidance_scale=1,
+                ).to(device, dtype=weight_dtype)
 
             if config.logging.verbose:
                 print("positive_latents:", positive_latents[0, 0, :5, :5])
@@ -336,10 +336,6 @@ def train(
 
             if config.logging.verbose:
                 print("target_latents:", target_latents[0, 0, :5, :5])
-
-        positive_latents.requires_grad = False
-        neutral_latents.requires_grad = False
-        unconditional_latents.requires_grad = False
 
         loss = prompt_pair.loss(
             target_latents=target_latents,
