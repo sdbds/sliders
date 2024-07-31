@@ -164,3 +164,4 @@ huggingface/
 outputs/
 models/
 datasets/
+wandb/

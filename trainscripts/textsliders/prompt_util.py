@@ -23,9 +23,17 @@ class PromptEmbedsXL:
         self.text_embeds = args[0]
         self.pooled_embeds = args[1]
 
+class PromptEmbedsHuyuan:
+    prompt_embeds: tuple[torch.FloatTensor, torch.FloatTensor]
+    prompt_attention_mask: tuple[torch.FloatTensor, torch.FloatTensor]
+
+    def __init__(self, *args) -> None:
+        self.prompt_embeds = args[0]
+        self.prompt_attention_mask = args[1]
+
 
 # SDv1.x, SDv2.x は FloatTensor、XL は PromptEmbedsXL
-PROMPT_EMBEDDING = Union[torch.FloatTensor, PromptEmbedsXL]
+PROMPT_EMBEDDING = Union[torch.FloatTensor, PromptEmbedsXL, PromptEmbedsHuyuan]
 
 
 class PromptEmbedsCache:  # 使いまわしたいので
@@ -149,7 +157,7 @@ class PromptEmbedsPair:
 
 
 def load_prompts_from_yaml(path, attributes = []):
-    with open(path, "r") as f:
+    with open(path, "r", encoding='utf-8') as f:
         prompts = yaml.safe_load(f)
     print(prompts)    
     if len(prompts) == 0:

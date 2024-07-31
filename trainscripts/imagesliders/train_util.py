@@ -1,5 +1,7 @@
 from typing import Optional, Union
-
+import cv2
+import numpy as np
+from PIL import Image
 import torch
 
 from transformers import CLIPTextModel, CLIPTokenizer
@@ -219,6 +221,9 @@ def get_noisy_image(
     device = vae.device
     image = image_processor.preprocess(image).to(device)
 
+    # 将图像转换为与 VAE 模型权重相同的类型
+    image = image.to(vae.dtype)
+
     init_latents = vae.encode(image).latent_dist.sample(None)
     init_latents = vae.config.scaling_factor * init_latents
 
@@ -292,10 +297,11 @@ def predict_noise_xl(
         noise_pred_text - noise_pred_uncond
     )
 
-    # https://github.com/huggingface/diffusers/blob/7a91ea6c2b53f94da930a61ed571364022b21044/src/diffusers/pipelines/stable_diffusion_xl/pipeline_stable_diffusion_xl.py#L775
-    noise_pred = rescale_noise_cfg(
-        noise_pred, noise_pred_text, guidance_rescale=guidance_rescale
-    )
+    if guidance_rescale > 0.0:
+        # https://github.com/huggingface/diffusers/blob/7a91ea6c2b53f94da930a61ed571364022b21044/src/diffusers/pipelines/stable_diffusion_xl/pipeline_stable_diffusion_xl.py#L775
+        guided_target = rescale_noise_cfg(
+            guided_target, noise_pred_text, guidance_rescale=guidance_rescale
+        )
 
     return guided_target
 
@@ -483,3 +489,38 @@ def bucket_resolution(bucket_resolution: int, img_resolution: tuple[int, int], m
     new_width = (new_width // multiple) * multiple
 
     return new_height, new_width
+
+def align_images(img1, img2, width, height):
+    # 调整图像大小
+    img2_resized = img2.resize((width, height),resample=Image.LANCZOS)
+    img1_resized = img1.resize(img2.size, Image.LANCZOS)
+ 
+    # 转换为OpenCV格式
+    img1_cv = cv2.cvtColor(np.array(img1_resized), cv2.COLOR_RGB2GRAY)
+    img2_cv = cv2.cvtColor(np.array(img2_resized), cv2.COLOR_RGB2GRAY)
+
+    # 使用ORB特征检测器
+    orb = cv2.ORB_create(nfeatures=300,scoreType=cv2.ORB_FAST_SCORE)
+    keypoints1, descriptors1 = orb.detectAndCompute(img1_cv, None)
+    keypoints2, descriptors2 = orb.detectAndCompute(img2_cv, None)
+
+    # 特征匹配
+    bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+    matches = bf.match(descriptors1, descriptors2)
+    matches = sorted(matches, key=lambda x: x.distance)
+
+    # 选取好的匹配点
+    good_matches = matches[:min(len(matches), 50)]
+
+    # 获取匹配点的坐标
+    src_pts = np.float32([keypoints1[m.queryIdx].pt for m in good_matches]).reshape(-1, 1, 2)
+    dst_pts = np.float32([keypoints2[m.trainIdx].pt for m in good_matches]).reshape(-1, 1, 2)
+
+    # 计算变换矩阵
+    M, _ = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
+
+    # 应用变换
+    height, width = img2_cv.shape
+    aligned_img1 = cv2.warpPerspective(np.array(img1_resized), M, (width, height))
+
+    return Image.fromarray(aligned_img1), img2_resized

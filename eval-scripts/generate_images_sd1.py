@@ -250,7 +250,7 @@ if __name__=='__main__':
     negative_prompts_path = args.negative_prompts
     if negative_prompts_path is not None:
         negative_prompt = ''
-        with open(negative_prompts_path, 'r') as fp:
+        with open(negative_prompts_path, 'r', encoding='utf-8') as fp:
             vals = json.load(fp)
             for val in vals:
                 negative_prompt+=val+' ,'

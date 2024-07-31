@@ -14,7 +14,8 @@ from safetensors.torch import save_file
 
 UNET_TARGET_REPLACE_MODULE_TRANSFORMER = [
 #     "Transformer2DModel",  # どうやらこっちの方らしい？ # attn1, 2
-    "Attention"
+    "Attention",
+    "HunYuanDiTBlock"
 ]
 UNET_TARGET_REPLACE_MODULE_CONV = [
     "ResnetBlock2D",
@@ -122,7 +123,7 @@ class LoRAModule(nn.Module):
 class LoRANetwork(nn.Module):
     def __init__(
         self,
-        unet: UNet2DConditionModel,
+        unet,
         rank: int = 4,
         multiplier: float = 1.0,
         alpha: float = 1.0,

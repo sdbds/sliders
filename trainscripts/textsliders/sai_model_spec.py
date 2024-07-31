@@ -1,6 +1,13 @@
 # based on https://github.com/Stability-AI/ModelSpec
 import datetime
+import hashlib
+from io import BytesIO
+import os
 from typing import List, Optional, Tuple, Union
+import safetensors
+import logging
+
+logger = logging.getLogger(__name__)
 
 r"""
 # Metadata Example
@@ -38,8 +45,8 @@ BASE_METADATA = {
     "modelspec.prediction_type": None,
     "modelspec.timestep_range": None,
     "modelspec.encoder_layer": None,
-    "ss_base_model_version":"sdxl_base_v1-0",
-    "ss_v2":False,
+    "ss_base_model_version": "sdxl_base_v1-0",
+    "ss_v2": False,
 }
 
 # 別に使うやつだけ定義
@@ -49,11 +56,17 @@ ARCH_SD_V1 = "stable-diffusion-v1"
 ARCH_SD_V2_512 = "stable-diffusion-v2-512"
 ARCH_SD_V2_768_V = "stable-diffusion-v2-768-v"
 ARCH_SD_XL_V1_BASE = "stable-diffusion-xl-v1-base"
+ARCH_SD3_M = "stable-diffusion-3-medium"
+ARCH_SD3_UNKNOWN = "stable-diffusion-3"
+ARCH_HYDIT_V1_1 = "hunyuan-dit-g2-v1_1"
+ARCH_HYDIT_V1_2 = "hunyuan-dit-g2-v1_2"
 
 ADAPTER_LORA = "sliders"
 
 IMPL_STABILITY_AI = "https://github.com/Stability-AI/generative-models"
+IMPL_COMFY_UI = "https://github.com/comfyanonymous/ComfyUI"
 IMPL_DIFFUSERS = "diffusers"
+IMPL_HUNYUAN_DIT = "https://github.com/Tencent/HunyuanDiT"
 
 PRED_TYPE_EPSILON = "epsilon"
 PRED_TYPE_V = "v"
@@ -73,7 +86,14 @@ def build_metadata(
     merged_from: Optional[str] = None,
     timesteps: Optional[Tuple[int, int]] = None,
     clip_skip: Optional[int] = None,
+    sd3: Optional[str] = None,
+    hydit: Optional[str] = None,
 ):
+    """
+    sd3: only supports "m"
+    """
+    # if state_dict is None, hash is not calculated
+
     metadata = {}
     metadata.update(BASE_METADATA)
 
@@ -81,6 +101,20 @@ def build_metadata(
         metadata["ss_base_model_version"] = "sdxl_base_v1-0"
         del metadata["ss_v2"]
         arch = ARCH_SD_XL_V1_BASE
+    elif sd3:
+        metadata["ss_base_model_version"] = "sd3_m"
+        del metadata["ss_v2"]
+        if sd3 == "m":
+            arch = ARCH_SD3_M
+        else:
+            arch = ARCH_SD3_UNKNOWN
+    elif hydit:
+        metadata["ss_base_model_version"] = "hydit"
+        del metadata["ss_v2"]
+        if hydit == "1.1":
+            arch = ARCH_HYDIT_V1_1
+        elif hydit == "1.2":
+            arch = ARCH_HYDIT_V1_2
     elif v2:
         metadata["ss_v2"] = True
         metadata["ss_base_model_version"] = "sd2.1"
@@ -100,6 +134,8 @@ def build_metadata(
     if sdxl:
         # Stable Diffusion ckpt, TI, SDXL LoRA
         impl = IMPL_STABILITY_AI
+    elif hydit:
+        impl = IMPL_HUNYUAN_DIT
     else:
         # v1/v2 LoRA or Diffusers
         impl = IMPL_DIFFUSERS

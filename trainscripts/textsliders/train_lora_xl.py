@@ -361,6 +361,7 @@ def train(
             unconditional_latents,
             target_latents,
             latents,
+            denoised_latents,
         )
         flush()
 

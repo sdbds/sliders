@@ -149,7 +149,7 @@ class PromptEmbedsPair:
 
 
 def load_prompts_from_yaml(path, attributes = []):
-    with open(path, "r") as f:
+    with open(path, "r", encoding='utf-8') as f:
         prompts = yaml.safe_load(f)
     print(prompts)    
     if len(prompts) == 0:

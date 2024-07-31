@@ -17,6 +17,8 @@ pydantic==1.10.3
 PyYAML==6.0.1
 Requests==2.31.0
 safetensors==0.3.1
+sentencepiece==0.2.0
+timm==1.0.7
 torch==2.3.1
 torchvision==0.18.1
 tqdm

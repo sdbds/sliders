@@ -33,12 +33,11 @@ import wandb
 
 NUM_IMAGES_PER_PROMPT = 1
 from lora import LoRANetwork, DEFAULT_TARGET_REPLACE, UNET_TARGET_REPLACE_MODULE_CONV
-
+used_indices = set()
 
 def flush():
     torch.cuda.empty_cache()
     gc.collect()
-
 
 def train(
     config: RootConfig,
@@ -180,6 +179,17 @@ def train(
 
     loss = None
 
+    def get_next_random_index(ims):
+        global used_indices
+        if len(used_indices) == len(ims):
+            used_indices.clear()  # 所有索引都已使用,重置集合
+                
+        while True:
+            index = random.randint(0, len(ims) - 1)
+            if index not in used_indices:
+                used_indices.add(index)
+                return index
+
     for i in pbar:
         with torch.no_grad():
             noise_scheduler.set_timesteps(
@@ -194,7 +204,7 @@ def train(
 
             # 1 ~ 49 からランダム
             timesteps_to = torch.randint(
-                10, config.train.max_denoising_steps, (1,)
+                1, config.train.max_denoising_steps, (1,)
             ).item()
 
             height, width = prompt_pair.resolution, prompt_pair.resolution
@@ -209,7 +219,8 @@ def train(
                 for im_ in ims
                 if ".png" in im_ or ".jpg" in im_ or ".jpeg" in im_ or ".webp" in im_
             ]
-            random_sampler = random.randint(0, len(ims) - 1)
+
+            random_sampler = get_next_random_index(ims)
 
             img1 = (
                 Image.open(f"{folder_main}/{folder1}/{ims[random_sampler]}")
@@ -230,15 +241,15 @@ def train(
                     multiple=32
                 )
 
-            img1=img1.resize((width, height),resample=Image.LANCZOS)
-            img2=img2.resize((width, height),resample=Image.LANCZOS)
+            img2, img1 = train_util.align_images(img2, img1, width, height)
 
             if config.logging.verbose:
                 print("guidance_scale:", prompt_pair.guidance_scale)
                 print("resolution:", prompt_pair.resolution)
                 print("dynamic_resolution:", prompt_pair.dynamic_resolution)
                 if prompt_pair.dynamic_resolution:
-                    print("bucketed resolution:", (height, width))
+                    print("img1:", (img1.size[1], img1.size[0]))
+                    print("img2:", (img2.size[1], img2.size[0]))
                 print("batch_size:", prompt_pair.batch_size)
                 print("dynamic_crops:", prompt_pair.dynamic_crops)
 
@@ -355,7 +366,7 @@ def train(
         # low_latents.requires_grad = False
 
         loss_high = criteria(target_latents_high, high_noise.to(torch.float32))
-        pbar.set_description(f"Loss*1k: {loss_high.item()*1000:.4f}")
+        pbar.set_description(f"High_Loss*1k: {loss_high.item()*1000:.4f}")
         loss_high.backward()
 
         # opposite
@@ -386,7 +397,7 @@ def train(
         # low_latents.requires_grad = False
 
         loss_low = criteria(target_latents_low, low_noise.to(torch.float32))
-        pbar.set_description(f"Loss*1k: {loss_low.item()*1000:.4f}")
+        pbar.set_description(f"Low_Loss*1k: {loss_low.item()*1000:.4f}")
         loss_low.backward()
 
         if config.logging.verbose:
@@ -401,6 +412,10 @@ def train(
             # low_latents,
             target_latents_low,
             target_latents_high,
+            denoised_latents_low,
+            denoised_latents_high,
+            high_noise,
+            low_noise,
         )
         flush()
 

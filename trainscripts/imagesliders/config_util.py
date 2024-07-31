@@ -84,7 +84,7 @@ def parse_precision(precision: str) -> torch.dtype:
 
 
 def load_config_from_yaml(config_path: str) -> RootConfig:
-    with open(config_path, "r") as f:
+    with open(config_path, "r", encoding='utf-8') as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
 
     root = RootConfig(**config)

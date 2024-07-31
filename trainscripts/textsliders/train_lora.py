@@ -316,6 +316,7 @@ def train(config: RootConfig, prompts: list[PromptSettings], device: int):
             unconditional_latents,
             target_latents,
             latents,
+            denoised_latents,
         )
         flush()
 
