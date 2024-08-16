@@ -249,7 +249,7 @@ def train(
             ]
             random_sampler = random.randint(0, len(ims) - 1)
 
-            img1 = Image.open(f"{folder_main}/{folder1}/{ims[random_sampler]}".convert("RGB").resize(
+            img1 = Image.open(f"{folder_main}/{folder1}/{ims[random_sampler]}").convert("RGB").resize(
                 (256, 256)
             )
             img2 = Image.open(f"{folder_main}/{folder2}/{ims[random_sampler]}").convert("RGB").resize(

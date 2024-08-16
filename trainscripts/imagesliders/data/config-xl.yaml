@@ -1,28 +1,28 @@
 prompts_file: "trainscripts/imagesliders/data/prompts-xl.yaml"
 pretrained_model:
-  name_or_path: "D:\\sd-webui-aki-v4.1\\models\\Stable-diffusion\\SDXL\\animagine-xl-2.0.safetensors" # you can also use .ckpt or .safetensors models
+  name_or_path: "D:\\sd-webui-aki-v4.1\\models\\Stable-diffusion\\SDXL\\sd_xl_anime_V52.safetensors" # you can also use .ckpt or .safetensors models
   v2: false # true if model is v2.x
   v_pred: false # true if model uses v-prediction
 network:
   type: "c3lier" # or "c3lier" or "lierla"
-  rank: 4
+  rank: 128
   alpha: 1.0
-  training_method: "full" # full, selfattn, xattn, noxattn, or innoxattn
+  training_method: "content" # full, selfattn, xattn, noxattn, or innoxattn
 train:
-  precision: "bfloat16"
+  precision: "float16"
   noise_scheduler: "ddim" # or "ddpm", "lms", "euler_a"
-  iterations: 1000
+  iterations: 2000
   lr: 0.0002
-  optimizer: "AdamW"
-  lr_scheduler: "constant"
+  optimizer: "Adam8bit" # or "AdamW", "Adam", "AdamW8bit"
+  lr_scheduler: "cosine_with_restarts"
   max_denoising_steps: 50
 save:
   name: "temp"
   path: "./models"
-  per_steps: 500
-  precision: "bfloat16"
+  per_steps: 400
+  precision: "float16"
 logging:
   use_wandb: false
-  verbose: false
+  verbose: true
 other:
   use_xformers: true

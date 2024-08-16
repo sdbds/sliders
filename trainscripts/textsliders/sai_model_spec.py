@@ -58,6 +58,9 @@ ARCH_SD_V2_768_V = "stable-diffusion-v2-768-v"
 ARCH_SD_XL_V1_BASE = "stable-diffusion-xl-v1-base"
 ARCH_SD3_M = "stable-diffusion-3-medium"
 ARCH_SD3_UNKNOWN = "stable-diffusion-3"
+ARCH_FLUX_1_DEV = "flux-1-dev"
+ARCH_FLUX_1_UNKNOWN = "flux-1"
+
 ARCH_HYDIT_V1_1 = "hunyuan-dit-g2-v1_1"
 ARCH_HYDIT_V1_2 = "hunyuan-dit-g2-v1_2"
 
@@ -67,6 +70,7 @@ IMPL_STABILITY_AI = "https://github.com/Stability-AI/generative-models"
 IMPL_COMFY_UI = "https://github.com/comfyanonymous/ComfyUI"
 IMPL_DIFFUSERS = "diffusers"
 IMPL_HUNYUAN_DIT = "https://github.com/Tencent/HunyuanDiT"
+IMPL_FLUX = "https://github.com/black-forest-labs/flux"
 
 PRED_TYPE_EPSILON = "epsilon"
 PRED_TYPE_V = "v"
@@ -88,9 +92,10 @@ def build_metadata(
     clip_skip: Optional[int] = None,
     sd3: Optional[str] = None,
     hydit: Optional[str] = None,
+    flux: Optional[str] = None,
 ):
     """
-    sd3: only supports "m"
+    sd3: only supports "m", flux: only supports "dev"
     """
     # if state_dict is None, hash is not calculated
 
@@ -108,6 +113,11 @@ def build_metadata(
             arch = ARCH_SD3_M
         else:
             arch = ARCH_SD3_UNKNOWN
+    elif flux is not None:
+        if flux == "dev":
+            arch = ARCH_FLUX_1_DEV
+        else:
+            arch = ARCH_FLUX_1_UNKNOWN
     elif hydit:
         metadata["ss_base_model_version"] = "hydit"
         del metadata["ss_v2"]
@@ -134,6 +144,9 @@ def build_metadata(
     if sdxl:
         # Stable Diffusion ckpt, TI, SDXL LoRA
         impl = IMPL_STABILITY_AI
+    elif flux:
+        # Flux
+        impl = IMPL_FLUX
     elif hydit:
         impl = IMPL_HUNYUAN_DIT
     else:
@@ -186,7 +199,7 @@ def build_metadata(
             reso = (reso[0], reso[0])
     else:
         # resolution is defined in dataset, so use default
-        if sdxl:
+        if sdxl or sd3 is not None or flux is not None:
             reso = 1024
         elif v2 and v_parameterization:
             reso = 768
@@ -197,7 +210,9 @@ def build_metadata(
 
     metadata["modelspec.resolution"] = f"{reso[0]}x{reso[1]}"
 
-    if v_parameterization:
+    if flux is not None:
+        del metadata["modelspec.prediction_type"]
+    elif v_parameterization:
         metadata["modelspec.prediction_type"] = PRED_TYPE_V
     else:
         metadata["modelspec.prediction_type"] = PRED_TYPE_EPSILON
